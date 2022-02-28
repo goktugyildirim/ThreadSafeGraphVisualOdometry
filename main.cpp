@@ -114,7 +114,7 @@ public:
     std::shared_lock lock(mutex);
 
     std::cout << "Search constraints over Point3D between view " << index_start_view_id <<
-      " and " << index_end_view_id << "| Min seen: "
+      " and " << index_end_view_id << " | Min seen: "
       << min_seen << " | Search only keyframe: " << only_keyframe << std::endl;
 
     std::map<int, MonocularVisualOdometry::Observation> obs;
@@ -137,7 +137,7 @@ public:
           int id_obs = map_camp_pose_p3d_to_observations[{id_view, id_p3d}];
           MonocularVisualOdometry::Observation observation = observations.at(id_obs);
 
-          if (observation.id_view < index_start_view_id-1 or
+          if (observation.id_view < index_start_view_id or
               observation.id_view > index_end_view_id)
             continue;
 
@@ -203,7 +203,7 @@ public:
       pts_3d.push_back(observation.point3d);
       if (print_info)
         std::cout << "Point3D id: " << observation.id_point3d <<
-            " | Point3D:" << observation.point3d << std::endl;
+            " | Point3D: " << observation.point3d << std::endl;
     }
     std::cout << "##########################################################"
                  "###################################################################" << std::endl;
@@ -284,9 +284,8 @@ int main() {
 
   // Example functions:
   std::map<int, MonocularVisualOdometry::Observation> constraints
-      = map->get_edge_of_point3Ds(2, 2, 3,
+      = map->get_edge_of_point3Ds(2, 1, 2,
                                   false, true );
-
   std::vector<cv::Point2d> pxs = map->get_points2D_of_frame(2, true);
   std::vector<cv::Point3d> pts = map->get_points3D_of_frame(1, true);
 
