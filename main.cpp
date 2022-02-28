@@ -22,7 +22,6 @@ struct Observation {
   int id_point3d;
   cv::Point3d point3d;
 
-  int id_point2d;
   cv::Point2d point2d;
 
   bool is_optimized;
@@ -33,7 +32,7 @@ struct Observation {
       // Vertex: Point 3D
       const int &id_point3d, const cv::Point3d &point3d,
       // Edge Point 2D
-      const int &id_point2d, const cv::Point2d &point2d,
+      const cv::Point2d &point2d,
       const bool& is_optimized)
   {
     this->id_view = id_view;
@@ -42,13 +41,10 @@ struct Observation {
     this->is_keyframe = is_keyframe;
     this->id_point3d = id_point3d;
     this->point3d = point3d;
-    this->id_point2d = id_point2d;
-    this->point2d = point2d;
     this->is_optimized = is_optimized;
   }
 };
 
-typedef std::shared_ptr<Observation> ObservationSharePtr;
 
 class Map
 {
@@ -57,107 +53,107 @@ class Map
 
   int curr_view_id = 0;
 
-  std::vector<ObservationSharePtr> observations;
-  std::map<int, std::vector<int>> map_cam_pose_to_observations;
-  std::map<int, std::vector<int>> map_p3d_to_observations;
+  std::vector<MonocularVisualOdometry::Observation> observations;
   std::map<int, std::vector<int>> map_p3d_to_cam_pose;
   std::map<int, std::vector<int>> map_cam_pose_to_p3d;
+  std::map<std::pair<int, int>, int> map_camp_pose_p3d_to_observations;
 
   mutable std::shared_mutex mutex;
 
-
   void print_constraints_info(const
-     std::vector<ObservationSharePtr>& observations)
+      std::map<int, Observation>& observations)
   {
-    std::shared_lock lock(mutex);
-
     std::cout << "Constraints:" << std::endl;
-    for (const MonocularVisualOdometry::ObservationSharePtr& observation : observations)
+    std::shared_lock lock(mutex);
+    for (auto it=observations.begin(); it!=observations.end();it++)
     {
-      std::cout << "Point3D id: " << observation->id_point3d << " | View id: " << observation->id_view  <<
-        " | Point2D id: " << observation->id_point2d <<
-        " | Point2D: " << observation->id_point2d << " | Point3D: " << observation->point3d
-        << " | Point2D: " << observation->point2d << " | is keyframe: " << observation->is_keyframe <<  std::endl;
+      auto id_obs = it->first;
+      auto observation = it->second;
+
+      std::cout << "Point3D id: " << observation.id_point3d << " | View id: " << observation.id_view
+        << " | Point3D: " << observation.point3d <<
+        " | Point2D: " << observation.point2d << " | is keyframe: " << observation.is_keyframe <<
+        " | observation id: " << id_obs << std::endl;
     }
   }
 
- public:
+public:
 
   explicit Map() {}
 
   void push_observation(
-      const MonocularVisualOdometry::ObservationSharePtr &observation)
+      const MonocularVisualOdometry::Observation &observation)
   {
     std::unique_lock lock(mutex);
 
     int id_observation = count_observations;
-    int id_point3d = observation->id_point3d;
-    int id_view = observation->id_view;
+    int id_point3d = observation.id_point3d;
+    int id_view = observation.id_view;
 
     curr_view_id = id_view;
 
-    if (observation->is_keyframe)
+    if (observation.is_keyframe)
       count_keyframe_observation++;
 
     observations.push_back(observation);
 
-    map_cam_pose_to_observations[id_view].push_back(id_observation);
-    map_p3d_to_observations[id_point3d].push_back(id_observation);
     map_p3d_to_cam_pose[id_point3d].push_back(id_view);
     map_cam_pose_to_p3d[id_view].push_back(id_point3d);
+    map_camp_pose_p3d_to_observations[{id_view, id_point3d}] = id_observation;
 
     count_observations++;
   }
 
-
-  std::vector<ObservationSharePtr>
+  std::map<int, MonocularVisualOdometry::Observation>
   get_edge_of_point3Ds(const int& min_seen,
                        const int& index_start_view_id,
+                       const int& index_end_view_id,
                        const bool& only_keyframe,
                        const bool& print_info)
   {
     std::shared_lock lock(mutex);
 
-    std::cout << "Search constraints over Point3D | Min seen: "
-              << min_seen << " | Only keyframe:" << only_keyframe << std::endl;
-    std::vector<ObservationSharePtr> obs;
+    std::cout << "Search constraints over Point3D between view " << index_start_view_id <<
+      " and " << index_end_view_id << "| Min seen: "
+      << min_seen << " | Search only keyframe: " << only_keyframe << std::endl;
+
+    std::map<int, MonocularVisualOdometry::Observation> obs;
 
     for (auto it=map_p3d_to_cam_pose.begin(); it!=map_p3d_to_cam_pose.end();it++)
     {
+
       auto id_p3d = it->first;
       auto count_seen = it->second.size();
-
 /*      if (print_info)
       {
         std::cout << "Query Point3D id: " << id_p3d << " seen count " << count_seen << std::endl;
         for (const auto frame_id : it->second)
           std::cout << "Seen in frame_id:  " << frame_id << std::endl;
       }*/
-
       if (count_seen >= min_seen)
       {
-        if (only_keyframe)
+        for (const int& id_view : it->second)
         {
-          for (const int &id_obs: map_p3d_to_observations[id_p3d])
-          {
-            ObservationSharePtr observation = observations.at(id_obs);
-            if (observation->is_keyframe)
-              if (observation->id_view >= index_start_view_id)
-              obs.push_back(observation);
-          }
-        } // eof only_keyframe
+          int id_obs = map_camp_pose_p3d_to_observations[{id_view, id_p3d}];
+          MonocularVisualOdometry::Observation observation = observations.at(id_obs);
 
-        if (!only_keyframe)
-        {
-          for (const int &id_obs: map_p3d_to_observations[id_p3d])
+          if (observation.id_view < index_start_view_id-1 or
+              observation.id_view > index_end_view_id)
+            continue;
+
+          if (only_keyframe)
           {
-            ObservationSharePtr observation = observations.at(id_obs);
-            if (observation->id_view >= index_start_view_id)
-              obs.push_back(observation);
+            if (observation.is_keyframe)
+            {
+              obs.insert(std::make_pair(id_obs, observation));
+            }
+          } else
+          {
+            obs.insert(std::make_pair(id_obs, observation));
           }
-        }  // eof !only_keyframe
-      } // eof min_seen
-    }
+        }
+      }
+      }
       std::cout << "Total generated constraint count: " << obs.size() << std::endl;
       std::cout << "Total observation count in map: " << count_observations << std::endl;
       if (print_info)
@@ -167,27 +163,28 @@ class Map
     return obs;
   }
 
+
   std::vector<cv::Point2d>
   get_points2D_of_frame(const int& id_view,
                         const bool& print_info)
   {
     std::shared_lock lock(mutex);
-
     std::vector<cv::Point2d> pxs;
     std::cout << "Search for 2D points of view: " << id_view << std::endl;
-    std::vector<int> ids_observation = map_cam_pose_to_observations[id_view];
-        for (const int& id_observation : ids_observation)
+    std::vector<int> ids_pts = map_cam_pose_to_p3d[id_view];
+    for (const int& id_point3d : ids_pts)
     {
-        ObservationSharePtr observation = observations.at(id_observation);
-        pxs.push_back(observation->point2d);
-        if (print_info)
-          std::cout << "Point2D id: " << observation->id_point2d <<
-              " | Point2D:" << observation->point2d << std::endl;
+      int id_obs = map_camp_pose_p3d_to_observations[{id_view, id_point3d}];
+      MonocularVisualOdometry::Observation observation = observations.at(id_obs);
+      pxs.push_back(observation.point2d);
+      if (print_info)
+        std::cout <<  "Point2D: " << observation.point2d << std::endl;
     }
     std::cout << "##########################################################"
                  "###################################################################" << std::endl;
     return pxs;
   }
+
 
   std::vector<cv::Point3d>
   get_points3D_of_frame(const int& id_view,
@@ -197,18 +194,16 @@ class Map
 
     std::vector<cv::Point3d> pts_3d;
     std::cout << "Search for 3D points of view: " << id_view << std::endl;
+
     std::vector<int> ids_pts = map_cam_pose_to_p3d[id_view];
     for (const int& id_point3d : ids_pts)
     {
-      for (const int& id_obs :map_p3d_to_observations[id_point3d])
-      {
-        MonocularVisualOdometry::ObservationSharePtr observation = observations[id_obs];
-        pts_3d.push_back(observation->point3d);
-        if (print_info)
-          std::cout << "Point3D id: " << observation->id_point3d <<
-              " | Point3D:" << observation->point3d << std::endl;
-        break;
-      }
+      int id_obs = map_camp_pose_p3d_to_observations[{id_view, id_point3d}];
+      MonocularVisualOdometry::Observation observation = observations.at(id_obs);
+      pts_3d.push_back(observation.point3d);
+      if (print_info)
+        std::cout << "Point3D id: " << observation.id_point3d <<
+            " | Point3D:" << observation.point3d << std::endl;
     }
     std::cout << "##########################################################"
                  "###################################################################" << std::endl;
@@ -229,74 +224,71 @@ typedef std::shared_ptr<MonocularVisualOdometry::Map> MapSharePtr;
 int main() {
   MapSharePtr map(new MonocularVisualOdometry::Map);
 
-  // Initialization example:
-  cv::Vec6d p0 = {0, 0, 0, 0, 0, 0};
-  cv::Vec6d p1 = {1, 1, 1, 1, 1, 1};
-  std::vector<cv::Point2d> c0_px;
-  std::vector<cv::Point2d> c1_px;
-  std::vector<cv::Point3d> map_points;
+  // Define vertex poses:
+  cv::Vec6d p0 = {0, 0, 0, 0, 0, 0}; // pt0 pt1 pt2p pt3
+  cv::Vec6d p1 = {1, 1, 1, 1, 1, 1}; // pt0 pt2p
+  cv::Vec6d p2 = {2, 2, 2, 2, 2, 2}; // pt3
+
+  // Define vertex Point3Ds:
+  cv::Point3d pt0 = {0,0,0}; // p0 p1
+  cv::Point3d pt1 = {1,1,1}; // p0
+  cv::Point3d pt2 = {2,2,2}; // p0 p1
+  cv::Point3d pt3 = {3,3,3}; // p0 p2
+
+  // Define observations as edges:
+  cv::Point2d px0 = {0,0};
+  cv::Point2d px1 = {1,1};
+  cv::Point2d px2 = {2,2};
+  cv::Point2d px3 = {3,3};
+  cv::Point2d px4 = {4,4};
+  cv::Point2d px5 = {5,5};
+  cv::Point2d px6 = {6,6};
+
   cv::Mat mat_4x4;
-  for (int i=0; i<10; i++)
-  {
-    cv::Point2d px0 = {0,0};
-    c0_px.push_back(px0);
-    cv::Point2d px1 = {1,1};
-    c1_px.push_back(px1);
-    cv::Point3d pt = {0,0,0};
-    map_points.push_back(pt);
-  }
 
-  int id_point2d = 0;
+  MonocularVisualOdometry::Observation observation0(
+      0, p0, mat_4x4,true,0,
+    pt0,px0, false);
 
-  // Build observations:
-  // Build observations for each frame order by order:
-  int view_id0 = 0;
-  int counter_point3D = 0;
-  for (int i=0; i<c0_px.size(); i++)
-  {
-    cv::Point2d px = c0_px[i];
-    cv::Point3d pt = map_points[i];
+  MonocularVisualOdometry::Observation observation1(
+          0, p0, mat_4x4,true,1,
+          pt1,px1, false);
 
-    MonocularVisualOdometry::ObservationSharePtr observation =
-      std::make_shared<MonocularVisualOdometry::Observation>(0,p0,
-                                                               mat_4x4,
-                                                               true,
-                                                               counter_point3D, pt,
-                                                               id_point2d, px,
-                                                               false);
-    map->push_observation(observation);
-    id_point2d++;
-    counter_point3D++;
-  }
+  MonocularVisualOdometry::Observation observation2(
+          0, p0, mat_4x4,true,2,
+          pt2,px2, false);
 
-  int view_id1 = 1;
-  counter_point3D = 0;
-  for (int i=0; i<c1_px.size(); i++)
-  {
-    cv::Point2d px = c1_px[i];
-    cv::Point3d pt = map_points[i];
+  MonocularVisualOdometry::Observation observation3(
+          0, p0, mat_4x4,true,3,
+          pt3,px3, false);
 
-    MonocularVisualOdometry::ObservationSharePtr observation =
-        std::make_shared<MonocularVisualOdometry::Observation>(1,p1,
-                                                               mat_4x4,
-                                                               true,
-                                                               counter_point3D, pt,
-                                                               id_point2d, px,
-                                                               false);
-    map->push_observation(observation);
-    id_point2d++;
-    counter_point3D++;
-  }
+  MonocularVisualOdometry::Observation observation4(
+          1, p1, mat_4x4,true,0,
+          pt0,px4, false);
 
+  MonocularVisualOdometry::Observation observation5(
+          1, p1, mat_4x4,true,2,
+          pt2,px5, false);
+
+  MonocularVisualOdometry::Observation observation6(
+          2, p2, mat_4x4,false,3,
+          pt3,px6, false);
+
+  map->push_observation(observation0);
+  map->push_observation(observation1);
+  map->push_observation(observation2);
+  map->push_observation(observation3);
+  map->push_observation(observation4);
+  map->push_observation(observation5);
+  map->push_observation(observation6);
 
   // Example functions:
-  std::vector<MonocularVisualOdometry::ObservationSharePtr> constraints
-      = map->get_edge_of_point3Ds(0, 0,true, true );
-  std::vector<cv::Point2d> pxs = map->get_points2D_of_frame(1, true);
-  std::vector<cv::Point3d> pts = map->get_points3D_of_frame(0, true);
+  std::map<int, MonocularVisualOdometry::Observation> constraints
+      = map->get_edge_of_point3Ds(2, 2, 3,
+                                  false, true );
 
-
-
+  std::vector<cv::Point2d> pxs = map->get_points2D_of_frame(2, true);
+  std::vector<cv::Point3d> pts = map->get_points3D_of_frame(1, true);
 
   return 0;
 }
