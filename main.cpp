@@ -316,31 +316,32 @@ int main() {
   map->push_observation(observation5);
   map->push_observation(observation6);
 
+
   // Example functions:
   // Generate constraints with some filters:
   std::vector<MonocularVisualOdometry::Observation> constraints
       = map->get_edge_of_point3Ds(0, 0, 2,
                                   false, true );
 
+
+
   // Update map with old observations
   std::vector<MonocularVisualOdometry::Observation> vector_new_obs;
-  pt3 = {9,9,9};
-  p2 = {9,9,9,9,9,9};
+  pt2 = {9,9,9};
+  p0 = {9,9,9,9,9,9};
+  
   MonocularVisualOdometry::Observation new_obs(
-      2, p2, mat_4x4,true,3,
-      pt3,px0, false);
+      0, p2, mat_4x4,true,2,
+      pt2,px0, false);
   vector_new_obs.push_back(new_obs);
-
   map->update_map_old_observations(vector_new_obs, true);
-
   std::vector<MonocularVisualOdometry::Observation> constraints2
       = map->get_edge_of_point3Ds(0, 0, 2,
                                   false, true );
-
-
-
-/*  std::vector<cv::Point2d> pxs = map->get_points2D_of_frame(2, true);
-  std::vector<cv::Point3d> pts = map->get_points3D_of_frame(1, true);*/
+  
+  std::vector<cv::Point2d> pxs = map->get_points2D_of_frame(2, true);
+  
+  std::vector<cv::Point3d> pts = map->get_points3D_of_frame(2, true);
 
   return 0;
 }
