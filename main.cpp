@@ -48,6 +48,7 @@ struct Observation {
     this->is_ref_frame;
     this->id_point3d = id_point3d;
     this->point3d = point3d;
+    this->point2d = point2d;
     this->is_optimized = is_optimized;
   }
 };
@@ -329,15 +330,17 @@ int main() {
   MapSharePtr map(new MonocularVisualOdometry::Map);
 
   // Define vertex poses:
-  cv::Vec6d p0 = {0, 0, 0, 0, 0, 0}; // pt0 pt1 pt2p pt3
-  cv::Vec6d p1 = {1, 1, 1, 1, 1, 1}; // pt0 pt2p
-  cv::Vec6d p2 = {2, 2, 2, 2, 2, 2}; // pt3
+  cv::Vec6d p0 = {0, 0, 0, 0, 0, 0}; // pt0 pt1 pt2 pt3
+  cv::Vec6d p1 = {1, 1, 1, 1, 1, 1}; // pt0 pt1 pt2
+  cv::Vec6d p2 = {2, 2, 2, 2, 2, 2}; // pt0 pt1
+  cv::Vec6d p3 = {3, 3, 3, 3, 3, 3}; // pt1
+  // Common seen point3D is pt1
 
   // Define vertex Point3Ds:
-  cv::Point3d pt0 = {0,0,0}; // p0 p1
-  cv::Point3d pt1 = {1,1,1}; // p0
+  cv::Point3d pt0 = {0,0,0}; // p0 p1 p2
+  cv::Point3d pt1 = {1,1,1}; // p0 p1 p2 p3
   cv::Point3d pt2 = {2,2,2}; // p0 p1
-  cv::Point3d pt3 = {3,3,3}; // p0 p2
+  cv::Point3d pt3 = {3,3,3}; // p0
 
   // Define observations as edges:
   cv::Point2d px0 = {0,0};
@@ -347,36 +350,46 @@ int main() {
   cv::Point2d px4 = {4,4};
   cv::Point2d px5 = {5,5};
   cv::Point2d px6 = {6,6};
+  cv::Point2d px7 = {7,7};
+  cv::Point2d px8 = {8,8};
+  cv::Point2d px9 = {9,9};
 
   cv::Mat mat_4x4;
 
+  // P0 Observations:
   MonocularVisualOdometry::Observation observation0(
       0, p0, mat_4x4,true, true,0,
       pt0,px0, false);
-
   MonocularVisualOdometry::Observation observation1(
-      0, p0, mat_4x4,true,true,1,
+      0, p0, mat_4x4,true, true,1,
       pt1,px1, false);
-
   MonocularVisualOdometry::Observation observation2(
       0, p0, mat_4x4,true, true,2,
       pt2,px2, false);
-
   MonocularVisualOdometry::Observation observation3(
-      0, p0, mat_4x4,true, true, 3,
+      0, p0, mat_4x4,true, true,3,
       pt3,px3, false);
-
+  // P1 Observations:
   MonocularVisualOdometry::Observation observation4(
-      1, p1, mat_4x4,true, false, 0,
+      1, p1, mat_4x4, false, false, 0,
       pt0,px4, false);
-
   MonocularVisualOdometry::Observation observation5(
-      1, p1, mat_4x4,true, false, 2,
-      pt2,px5, false);
-
+      1, p1, mat_4x4, false, false, 1,
+      pt1,px5, false);
   MonocularVisualOdometry::Observation observation6(
-      2, p2, mat_4x4,false, false, 3,
-      pt3,px6, false);
+      1, p1, mat_4x4, false, false, 2,
+      pt2,px6, false);
+  // P2 Observations:
+  MonocularVisualOdometry::Observation observation7(
+      2, p2, mat_4x4, true, false, 0,
+      pt0,px7, false);
+  MonocularVisualOdometry::Observation observation8(
+      2, p2, mat_4x4, true, false, 1,
+      pt1,px8, false);
+  // P3 Observations:
+  MonocularVisualOdometry::Observation observation9(
+      3, p3, mat_4x4, false, false, 1,
+      pt1,px9, false);
 
   map->push_observation(observation0);
   map->push_observation(observation1);
@@ -385,40 +398,20 @@ int main() {
   map->push_observation(observation4);
   map->push_observation(observation5);
   map->push_observation(observation6);
-
-  std::vector<MonocularVisualOdometry::Observation> obs = map->get_common_observations_ref_frame_to_and_curr_frame(true);
-
-
-/*
-  // Example functions:
-  // Generate constraints with some filters:
-  std::vector<MonocularVisualOdometry::Observation> constraints
-      = map->get_edge_of_point3Ds(0, 0, 2,
-                                  false, true );
-*/
+  map->push_observation(observation7);
+  map->push_observation(observation8);
+  map->push_observation(observation9);
 
 
+  //Example functions:
+  //std::vector<MonocularVisualOdometry::Observation> obs = map->get_common_observations_ref_frame_to_and_curr_frame(true);
+  //std::vector<MonocularVisualOdometry::Observation> observations = map->get_edge_of_point3Ds(0, 0, 3, false, true );
 
-/*
-  // Update map with old observations
-  std::vector<MonocularVisualOdometry::Observation> vector_new_obs;
-  pt0 = {9,9,9};
-  p0 = {9,9,9,9,9,9};
+  //std::vector<MonocularVisualOdometry::Observation> vector_old_obs;
+  //map->update_map_old_observations(vector_old_obs, true);
 
-  MonocularVisualOdometry::Observation new_obs(
-      0, p0, mat_4x4,true,0,
-      pt0,px0, false);
-  vector_new_obs.push_back(new_obs);
-
-  map->update_map_old_observations(vector_new_obs, true);
-  std::vector<MonocularVisualOdometry::Observation> constraints2
-      = map->get_edge_of_point3Ds(0, 0, 2,
-                                  false, true );
-*/
-
-/*  std::vector<cv::Point2d> pxs = map->get_points2D_of_frame(2, true);
-
-  std::vector<cv::Point3d> pts = map->get_points3D_of_frame(2, true);*/
-
+  //std::vector<cv::Point2d> pxs = map->get_points2D_of_frame(2, true);
+  //std::vector<cv::Point3d> pts = map->get_points3D_of_frame(2, true);
+  
   return 0;
 }
