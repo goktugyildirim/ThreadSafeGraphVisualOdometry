@@ -83,7 +83,7 @@ class Map
       std::cout << "Point3D id: " << observation.id_point3d << " | View id: " << observation.id_view
                 << " | Point3D: " << observation.point3d <<
           " | Point2D: " << observation.point2d << " | Pose: " << observation.pose << " | is keyframe: " << observation.is_keyframe <<
-          " | observation id: " << observation.id_obs << std::endl;
+          " | observation id: " << observation.id_obs  << " | is optimized: " << observation.is_optimized << std::endl;
     }
   }
 
@@ -248,6 +248,7 @@ public:
         if (print_info)
           std::cout << "Observation: " << id_obs << " is updated." <<std::endl;
         observations[id_obs].point3d = old_observation.point3d;
+        observations[id_obs].is_optimized = true;
       }
 
       for (const int& id_obs : map_cam_pose_to_observations[id_view])
@@ -255,6 +256,7 @@ public:
         if (print_info)
           std::cout << "Observation: " << id_obs << " is updated." <<std::endl;
         observations[id_obs].pose = old_observation.pose;
+        observations[id_obs].is_optimized = true;
       }
     }
     if (print_info)
@@ -404,14 +406,26 @@ int main() {
 
 
   //Example functions:
+
+  // F1
   //std::vector<MonocularVisualOdometry::Observation> obs = map->get_common_observations_ref_frame_to_and_curr_frame(true);
-  //std::vector<MonocularVisualOdometry::Observation> observations = map->get_edge_of_point3Ds(0, 0, 3, false, true );
+  // F2
+  std::vector<MonocularVisualOdometry::Observation> observations = map->get_edge_of_point3Ds(0, 0, 3, false, true);
+  std::vector<MonocularVisualOdometry::Observation> vector_old_obs;
+  cv::Point3d new_p = {999,999,999};
+  cv::Vec6d new_pose = {999,999,999,999,999,999};
 
-  //std::vector<MonocularVisualOdometry::Observation> vector_old_obs;
-  //map->update_map_old_observations(vector_old_obs, true);
+  MonocularVisualOdometry::Observation observation_new(
+      0, new_pose, mat_4x4, false, false, 0,
+      new_p,px0, true);
+  vector_old_obs.push_back(observation_new);
+  map->update_map_old_observations(vector_old_obs, true);
+  std::vector<MonocularVisualOdometry::Observation> observations2 = map->get_edge_of_point3Ds(0, 0, 3, false, true);
 
+  // F3
   //std::vector<cv::Point2d> pxs = map->get_points2D_of_frame(2, true);
+  // F4
   //std::vector<cv::Point3d> pts = map->get_points3D_of_frame(2, true);
-  
+
   return 0;
 }
