@@ -14,34 +14,32 @@ namespace MonocularVisualOdometry {
 
 
 // Inputs
-struct Observation {
-  int id_view;
+struct Observation
+{
+  bool is_ref_frame{};
+  bool is_keyframe;
+  int id_frame;
   cv::Vec6d pose;
   cv::Mat mat_pose_4x4;
-  bool is_keyframe;
-  bool is_ref_frame;
 
   int id_point3d;
   cv::Point3d point3d;
 
+  int id_point2d{};
   cv::Point2d point2d;
 
   bool is_optimized;
-
-
+  bool is_initialized;
 
   int id_obs;
 
   Observation(
-      // Vertex: Camera Pose
-      const int &id_view, const cv::Vec6d &pose, const cv::Mat &mat_pose_4x4, const bool &is_keyframe, const bool& is_ref_frame,
-      // Vertex: Point 3D
-      const int &id_point3d, const cv::Point3d &point3d,
-      // Edge Point 2D
-      const cv::Point2d &point2d,
-      const bool& is_optimized)
+      const int &id_frame, const int &id_point3d,
+      const cv::Vec6d &pose,  const cv::Mat &mat_pose_4x4, const cv::Point2d &point2d,
+      const cv::Point3d &point3d, const bool &is_keyframe, const bool& is_ref_frame,
+      const bool& is_optimized, const bool& is_initialized)
   {
-    this->id_view = id_view;
+    this->id_frame = id_frame;
     this->pose = pose;
     this->mat_pose_4x4 = mat_pose_4x4;
     this->is_keyframe = is_keyframe;
@@ -50,9 +48,9 @@ struct Observation {
     this->point3d = point3d;
     this->point2d = point2d;
     this->is_optimized = is_optimized;
+    this->is_initialized = is_initialized;
   }
 };
-
 
 class Map
 {
@@ -80,7 +78,7 @@ class Map
     std::shared_lock lock(mutex);
     for (const Observation& observation : observations)
     {
-      std::cout << "Point3D id: " << observation.id_point3d << " | View id: " << observation.id_view
+      std::cout << "Point3D id: " << observation.id_point3d << " | View id: " << observation.id_frame
                 << " | Point3D: " << observation.point3d <<
           " | Point2D: " << observation.point2d << " | Pose: " << observation.pose << " | is keyframe: " << observation.is_keyframe <<
           " | observation id: " << observation.id_obs  << " | is optimized: " << observation.is_optimized << std::endl;
@@ -100,24 +98,24 @@ public:
     Observation new_obs = observation;
 
     if (count_observations == 0)
-      id_ref_frame = observation.id_view;
+      id_ref_frame = observation.id_frame;
 
     new_obs.id_obs = count_observations;
-    id_curr_frame = new_obs.id_view;
+    id_curr_frame = new_obs.id_frame;
 
     if (new_obs.is_keyframe)
     {
-      id_last_keyframe = new_obs.id_view;
+      id_last_keyframe = new_obs.id_frame;
       count_keyframe_observation++;
     }
 
     observations.push_back(new_obs);
 
-    map_p3d_to_cam_pose[new_obs.id_point3d].push_back(new_obs.id_view);
-    map_cam_pose_to_p3d[new_obs.id_view].push_back(new_obs.id_point3d);
+    map_p3d_to_cam_pose[new_obs.id_point3d].push_back(new_obs.id_frame);
+    map_cam_pose_to_p3d[new_obs.id_frame].push_back(new_obs.id_point3d);
     map_p3d_to_observations[new_obs.id_point3d].push_back(new_obs.id_obs);
-    map_cam_pose_to_observations[new_obs.id_view].push_back(new_obs.id_obs);
-    map_cam_pose_p3d_to_observations[{new_obs.id_view, new_obs.id_point3d}] = new_obs.id_obs;
+    map_cam_pose_to_observations[new_obs.id_frame].push_back(new_obs.id_obs);
+    map_cam_pose_p3d_to_observations[{new_obs.id_frame, new_obs.id_point3d}] = new_obs.id_obs;
 
     count_observations++;
   }
@@ -155,8 +153,8 @@ public:
           int id_obs = map_cam_pose_p3d_to_observations[{id_view, id_p3d}];
           MonocularVisualOdometry::Observation observation = observations.at(id_obs);
 
-          if (observation.id_view < index_start_view_id or
-              observation.id_view > index_end_view_id)
+          if (observation.id_frame < index_start_view_id or
+              observation.id_frame > index_end_view_id)
             continue;
 
           if (only_keyframe)
@@ -240,7 +238,7 @@ public:
 
     for (const Observation& old_observation : old_observations)
     {
-      int id_view = old_observation.id_view;
+      int id_view = old_observation.id_frame;
       int id_point3d = old_observation.id_point3d;
 
       for (const int& id_obs : map_p3d_to_observations[id_point3d])
@@ -358,51 +356,6 @@ int main() {
 
   cv::Mat mat_4x4;
 
-  // P0 Observations:
-  MonocularVisualOdometry::Observation observation0(
-      0, p0, mat_4x4,true, true,0,
-      pt0,px0, false);
-  MonocularVisualOdometry::Observation observation1(
-      0, p0, mat_4x4,true, true,1,
-      pt1,px1, false);
-  MonocularVisualOdometry::Observation observation2(
-      0, p0, mat_4x4,true, true,2,
-      pt2,px2, false);
-  MonocularVisualOdometry::Observation observation3(
-      0, p0, mat_4x4,true, true,3,
-      pt3,px3, false);
-  // P1 Observations:
-  MonocularVisualOdometry::Observation observation4(
-      1, p1, mat_4x4, false, false, 0,
-      pt0,px4, false);
-  MonocularVisualOdometry::Observation observation5(
-      1, p1, mat_4x4, false, false, 1,
-      pt1,px5, false);
-  MonocularVisualOdometry::Observation observation6(
-      1, p1, mat_4x4, false, false, 2,
-      pt2,px6, false);
-  // P2 Observations:
-  MonocularVisualOdometry::Observation observation7(
-      2, p2, mat_4x4, true, false, 0,
-      pt0,px7, false);
-  MonocularVisualOdometry::Observation observation8(
-      2, p2, mat_4x4, true, false, 1,
-      pt1,px8, false);
-  // P3 Observations:
-  MonocularVisualOdometry::Observation observation9(
-      3, p3, mat_4x4, false, false, 1,
-      pt1,px9, false);
-
-  map->push_observation(observation0);
-  map->push_observation(observation1);
-  map->push_observation(observation2);
-  map->push_observation(observation3);
-  map->push_observation(observation4);
-  map->push_observation(observation5);
-  map->push_observation(observation6);
-  map->push_observation(observation7);
-  map->push_observation(observation8);
-  map->push_observation(observation9);
 
 
   //Example functions:
@@ -410,6 +363,8 @@ int main() {
   // F1
   //std::vector<MonocularVisualOdometry::Observation> obs = map->get_common_observations_ref_frame_to_and_curr_frame(true);
   // F2
+
+/*
   std::vector<MonocularVisualOdometry::Observation> observations = map->get_edge_of_point3Ds(0, 0, 3, false, true);
   std::vector<MonocularVisualOdometry::Observation> vector_old_obs;
   cv::Point3d new_p = {999,999,999};
@@ -421,11 +376,79 @@ int main() {
   vector_old_obs.push_back(observation_new);
   map->update_map_old_observations(vector_old_obs, true);
   std::vector<MonocularVisualOdometry::Observation> observations2 = map->get_edge_of_point3Ds(0, 0, 3, false, true);
+*/
 
   // F3
   //std::vector<cv::Point2d> pxs = map->get_points2D_of_frame(2, true);
   // F4
   //std::vector<cv::Point3d> pts = map->get_points3D_of_frame(2, true);
+
+/*
+  std::map<int, std::map<int, int>> map_out;
+
+  std::map<int, int> map_inner1;
+  map_inner1[0] = 0;
+  map_inner1[1] = 1;
+  map_inner1[2] = 4;
+  map_inner1[3] = 9;
+  map_inner1[4] = 16;
+
+  std::map<int, int> map_inner2;
+  map_inner2[0] = 0;
+  map_inner2[1] = -1;
+  map_inner2[2] = -4;
+  map_inner2[3] = -9;
+  map_inner2[4] = -16;
+
+
+  map_out.emplace(0, map_inner1);
+  map_out.emplace(1, map_inner2);
+
+
+  for (auto it = map_out.begin(); it!= map_out.end(); it++)
+  {
+    for (auto it2 = it->second.begin(); it2 != it->second.end(); it2++)
+    {
+      std::cout << it2->second << std::endl;
+    }
+    std::cout << "*****************************************OUT" << std::endl;
+  }
+
+  auto it = map_out[0].find(3);
+  map_out[0].erase(it);
+
+  std::cout << "###########################################³" << std::endl;
+
+
+  for (auto it = map_out.begin(); it!= map_out.end(); it++)
+  {
+    for (auto it2 = it->second.begin(); it2 != it->second.end(); it2++)
+    {
+      std::cout << it2->second << std::endl;
+    }
+    std::cout << "*****************************************OUT" << std::endl;
+  }
+*/
+
+
+  std::map<int, int> m;
+  m[0] = 0;
+  m[1] = 1;
+  m[2] = 4;
+
+  for (auto item = m.begin(); item!=m.end(); item++)
+    std::cout << item->first << " " << item->second << std::endl;
+
+  auto it_delete = m.find(1);
+  m.erase(it_delete);
+
+  for (auto item = m.begin(); item!=m.end(); item++)
+    std::cout << item->first << " " << item->second << std::endl;
+
+
+
+
+
 
   return 0;
 }
